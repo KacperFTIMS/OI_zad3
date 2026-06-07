@@ -48,8 +48,13 @@ def perturb_from_bottom(model, image_tensor, original_class, save_path):
     height = img_clone.shape[-2] # Wysokość obrazka, dla MNIST = 28
     
     for row in range(height-1, -1, -1):
-        # Zasłaniamy dany wiersz (ustawiamy wartość pikseli na 0 - kolor tła)
-        img_clone[..., row, :] = 0.0
+        # Pobieramy oryginalne wartości wiersza, by móc je później wypisać
+        original_row_values = img_clone[..., row, :].clone().flatten()
+        
+        # Zasłaniamy dany wiersz (kolor tła dla znormalizowanego MNIST to ok. -0.4242)
+        img_clone[..., row, :] = -0.4242
+        
+        new_row_values = img_clone[..., row, :].flatten()
         
         # Predykcja na zmodyfikowanym obrazie
         output = model(img_clone)
@@ -57,16 +62,27 @@ def perturb_from_bottom(model, image_tensor, original_class, save_path):
         
         if pred_class != original_class:
             print(f"Predykcja uległa zmianie z klasy {original_class} na {pred_class} przy zasłonięciu do wiersza {row} (licząc od góry).")
+            print(f"--- Szczegóły zmiany dla wiersza {row} ---")
+            for i in range(len(original_row_values)):
+                print(f"Piksel {i:2d}: Przed: {original_row_values[i]:.4f}, Po: {new_row_values[i]:.4f}")
+            print("------------------------------------------")
             
             # Pokażmy wizualnie, w którym momencie model się pomylił
             fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-            axes[0].imshow(image_tensor.squeeze().cpu().detach().numpy(), cmap='gray')
+            
+            # Cofamy normalizację (wartości wracają do skali 0.0 - 1.0)
+            orig_np = image_tensor.squeeze().cpu().detach().numpy() * 0.3081 + 0.1307
+            clone_np = img_clone.squeeze().cpu().detach().numpy() * 0.3081 + 0.1307
+            
+            # Wymuszamy na matplotlibie sztywne widełki od 0 do 1
+            axes[0].imshow(orig_np, cmap='gray', vmin=0.0, vmax=1.0)
             axes[0].set_title(f'Oryginał (Klasa {original_class})')
             axes[0].axis('off')
             
-            axes[1].imshow(img_clone.squeeze().cpu().detach().numpy(), cmap='gray')
-            axes[1].set_title(f'Kontrprzykład (Pomylone na {pred_class})')
+            axes[1].imshow(clone_np, cmap='gray', vmin=0.0, vmax=1.0)
+            axes[1].set_title(f'Kontrprzykład ({pred_class})')
             axes[1].axis('off')
+            
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path)
             print(f"Zapisano kontrprzykład do: {save_path}")
@@ -92,7 +108,10 @@ if __name__ == '__main__':
     cnn_path = os.path.join(os.path.dirname(__file__), '..', 'models', 'best_cnn_mnist.pt')
     model_cnn.load_state_dict(torch.load(cnn_path, map_location='cpu'))
     
-    tfm = transforms.Compose([transforms.ToTensor()])
+    tfm = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,))
+    ])
     mnist_test = torchvision.datasets.MNIST(root="data", train=False, transform=tfm, download=True)
     sample_img, label = mnist_test[0]
     image_tensor = sample_img.unsqueeze(0)
