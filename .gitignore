@@ -1,0 +1,7 @@
+/data
+/xai_scripts/__pycache__
+/.idea
+*.pt
+*.pt
+*.npz
+*.pt

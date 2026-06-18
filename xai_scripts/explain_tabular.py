@@ -21,6 +21,14 @@ def explain_tabular_model(model, input_tensor, target_class_idx, feature_names, 
     # Konwersja do numpy dla łatwiejszego rysowania wykresu
     attributions_np = attributions.squeeze(0).cpu().detach().numpy()
     
+    # Wypisywanie wyników w tabeli w konsoli
+    print(f"\nTablica atrybucji dla klasy {target_class_idx}:")
+    print(f"{'Cecha':<30} | {'Atrybucja':>10}")
+    print("-" * 43)
+    for name, attr_val in zip(feature_names, attributions_np):
+        print(f"{name:<30} | {attr_val:>10.4f}")
+    print("-" * 43)
+
     # Rysowanie wykresu słupkowego
     plt.figure(figsize=(10, 6))
     y_pos = np.arange(len(feature_names))
@@ -53,13 +61,14 @@ if __name__ == '__main__':
     model_path_iris = os.path.join(os.path.dirname(__file__), '..', 'models', 'MLP_Iris.pt')
     model_iris.load_state_dict(torch.load(model_path_iris, map_location='cpu'))
     
-    # Pobieramy pojedynczą próbkę klasy 0 (setosa)
-    sample_iris = torch.tensor(iris.data[0:1], dtype=torch.float32)
-    label_iris = int(iris.target[0])
-    out_path_iris = os.path.join(os.path.dirname(__file__), '..', 'wyniki_xai', 'iris_ablation.png')
-    explain_tabular_model(model_iris, sample_iris, target_class_idx=label_iris, feature_names=iris_features, save_path=out_path_iris)
+    # Generujemy dla każdej z klas po jednym przykładzie
+    for idx in [0, 50, 100]:
+        sample_iris = torch.tensor(iris.data[idx:idx+1], dtype=torch.float32)
+        label_iris = int(iris.target[idx])
+        out_path_iris = os.path.join(os.path.dirname(__file__), '..', 'wyniki_xai', f'iris_ablation_class{label_iris}.png')
+        explain_tabular_model(model_iris, sample_iris, target_class_idx=label_iris, feature_names=iris_features, save_path=out_path_iris)
 
-    print("--- Objaśnianie modelu dla zbioru Wine ---")
+    print("\n--- Objaśnianie modelu dla zbioru Wine ---")
     wine = load_wine()
     wine_features = wine.feature_names
     # Wine: 13 cech wejściowych, 3 klasy
@@ -68,8 +77,9 @@ if __name__ == '__main__':
     model_path_wine = os.path.join(os.path.dirname(__file__), '..', 'models', 'MLP_Wine.pt')
     model_wine.load_state_dict(torch.load(model_path_wine, map_location='cpu'))
     
-    # Pobieramy pojedynczą próbkę klasy 0
-    sample_wine = torch.tensor(wine.data[0:1], dtype=torch.float32)
-    label_wine = int(wine.target[0])
-    out_path_wine = os.path.join(os.path.dirname(__file__), '..', 'wyniki_xai', 'wine_ablation.png')
-    explain_tabular_model(model_wine, sample_wine, target_class_idx=label_wine, feature_names=wine_features, save_path=out_path_wine)
+    # Generujemy dla każdej z klas po jednym przykładzie
+    for idx in [0, 60, 131]:
+        sample_wine = torch.tensor(wine.data[idx:idx+1], dtype=torch.float32)
+        label_wine = int(wine.target[idx])
+        out_path_wine = os.path.join(os.path.dirname(__file__), '..', 'wyniki_xai', f'wine_ablation_class{label_wine}.png')
+        explain_tabular_model(model_wine, sample_wine, target_class_idx=label_wine, feature_names=wine_features, save_path=out_path_wine)

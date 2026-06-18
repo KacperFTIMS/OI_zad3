@@ -2,7 +2,8 @@ import os
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-from captum.attr import Saliency
+from captum.attr import Saliency, Lime
+from skimage.segmentation import slic
 
 def explain_with_saliency(model, image_tensor, target_class_idx, save_path):
     """
@@ -91,6 +92,102 @@ def perturb_from_bottom(model, image_tensor, original_class, save_path):
             
     print("Zasłonięto cały obraz od dołu do góry, a model cały czas zwracał poprawną klasę (lub po cichu zmienił w ostatniej iteracji).")
 
+def explain_with_lime_mnist(model, image_tensor, target_class_idx, save_path):
+    """
+    Funkcja objaśniająca model na zbiorze MNIST przy użyciu LIME z segmentacją SLIC.
+    """
+    model.eval()
+    image_np = image_tensor.squeeze(0).squeeze(0).cpu().detach().numpy()
+    
+    # Segmentacja SLIC dla obrazu 28x28 (odpowiednie parametry n_segments i compactness)
+    segments = slic(image_np, n_segments=16, compactness=0.1, start_label=0, channel_axis=None)
+    feature_mask = torch.tensor(segments).unsqueeze(0).unsqueeze(0).to(image_tensor.device)
+    
+    lime = Lime(model)
+    # Tło w znormalizowanym MNIST to ok. -0.4242, więc używamy tej wartości jako baselines
+    baselines = image_tensor * 0.0 - 0.4242 
+    
+    print("Trwa obliczanie atrybucji algorytmem LIME dla MNIST...")
+    attributions = lime.attribute(
+        image_tensor,
+        target=target_class_idx,
+        baselines=baselines,
+        feature_mask=feature_mask,
+        n_samples=200 
+    )
+    
+    attr_np = attributions.squeeze(0).squeeze(0).cpu().detach().numpy()
+    
+    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    
+    # Cofamy normalizację (wartości wracają do skali 0.0 - 1.0)
+    orig_np = image_tensor.squeeze().cpu().detach().numpy() * 0.3081 + 0.1307
+    
+    axes[0].imshow(orig_np, cmap='gray', vmin=0.0, vmax=1.0)
+    axes[0].set_title('Oryginał MNIST')
+    axes[0].axis('off')
+    
+    vmax = np.max(np.abs(attr_np))
+    # Jeżeli vmax jest zbyt bliskie 0 (brak wpływu), ustalamy minimalne vmax
+    if vmax < 1e-5:
+        vmax = 1e-5
+        
+    im = axes[1].imshow(attr_np, cmap='bwr', vmin=-vmax, vmax=vmax) 
+    axes[1].set_title('Wpływ superpikseli (LIME)')
+    axes[1].axis('off')
+    plt.colorbar(im, ax=axes[1])
+    
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path)
+    print(f"Zapisano LIME MNIST do: {save_path}")
+    plt.close()
+
+def explain_with_ablation_zoning2d(model, input_tensor, original_img_2d, target_class_idx, save_path):
+    """
+    Generuje dwuwymiarowy (4x4) wykres atrybucji Feature Ablation dla modelu MLP (zoning16).
+    Pokazuje rozkład ważności cech w przestrzeni 2D.
+    """
+    model.eval()
+    
+    # Inicjalizacja Feature Ablation
+    from captum.attr import FeatureAblation
+    ablator = FeatureAblation(model)
+    attributions = ablator.attribute(input_tensor, target=target_class_idx)
+    attributions_np = attributions.squeeze(0).cpu().detach().numpy()
+    
+    # Reshape do siatki 4x4
+    attr_2d = attributions_np.reshape(4, 4)
+    
+    # Rysowanie
+    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    
+    # Oryginalny obrazek
+    axes[0].imshow(original_img_2d, cmap='gray')
+    axes[0].set_title(f'Oryginalny obraz (Klasa {target_class_idx})')
+    axes[0].axis('off')
+    
+    # Wizualizacja 2D atrybucji (siatka 4x4)
+    vmax = np.max(np.abs(attr_2d))
+    if vmax < 1e-5:
+        vmax = 1e-5
+        
+    im = axes[1].imshow(attr_2d, cmap='bwr', vmin=-vmax, vmax=vmax, interpolation='nearest')
+    axes[1].set_title('Wpływ stref 4x4 (Ablation)')
+    axes[1].axis('off')
+    
+    # Dodanie siatki pomocniczej do obrazka po prawej
+    axes[1].set_xticks(np.arange(-0.5, 4, 1), minor=True)
+    axes[1].set_yticks(np.arange(-0.5, 4, 1), minor=True)
+    axes[1].grid(which='minor', color='black', linestyle='-', linewidth=1)
+    
+    plt.colorbar(im, ax=axes[1])
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path)
+    print(f"Zapisano wizualizację 2D MLP do: {save_path}")
+    plt.close()
+
 # --- MIEJSCE NA TWOJE KODY ---
 if __name__ == '__main__':
     import os
@@ -136,4 +233,9 @@ if __name__ == '__main__':
     zoning_feature_names = [f"Strefa {i+1}" for i in range(16)]
     out_zoning = os.path.join(os.path.dirname(__file__), '..', 'wyniki_xai', 'mnist_mlp_zoning_ablation.png')
     explain_tabular_model(model_mlp, sample_mlp_input, target_class_idx=label_mlp, feature_names=zoning_feature_names, save_path=out_zoning)
+
+    # Generowanie wizualizacji 2D
+    original_img_2d = mnist_test[0][0].squeeze().numpy() * 0.3081 + 0.1307
+    out_zoning_2d = os.path.join(os.path.dirname(__file__), '..', 'wyniki_xai', 'mnist_mlp_zoning_2d.png')
+    explain_with_ablation_zoning2d(model_mlp, sample_mlp_input, original_img_2d, label_mlp, out_zoning_2d)
 

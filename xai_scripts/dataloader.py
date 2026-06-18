@@ -72,6 +72,7 @@ def extract_zoning16(img_tensor):
     return zoning_features.flatten()
 
 def load_mnist(extractor_name):
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     extractors = {
         'flatten': extract_flatten,
         'crossings2d': extract_crossings2d,
@@ -80,13 +81,14 @@ def load_mnist(extractor_name):
         'projections': extract_projections
     }
     extractor_fn = extractors[extractor_name]
-    out_path = f"mnist_{extractor_name}.npz"
+    out_path = os.path.join(PROJECT_ROOT, f"mnist_{extractor_name}.npz")
     
     if not os.path.exists(out_path):
         print(f"Generowanie cech dla MNIST ({extractor_name})...")
         tfm = transforms.Compose([transforms.ToTensor()])
-        mnist_train = torchvision.datasets.MNIST(root="data", train=True, transform=tfm, download=True)
-        mnist_test = torchvision.datasets.MNIST(root="data", train=False, transform=tfm, download=True)
+        data_dir = os.path.join(PROJECT_ROOT, "data")
+        mnist_train = torchvision.datasets.MNIST(root=data_dir, train=True, transform=tfm, download=True)
+        mnist_test = torchvision.datasets.MNIST(root=data_dir, train=False, transform=tfm, download=True)
         
         X_train_list, y_train_list = [], []
         for img, label in mnist_train:

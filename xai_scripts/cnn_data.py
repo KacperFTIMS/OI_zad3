@@ -3,6 +3,7 @@ from torchvision import datasets, transforms
 import torchvision.transforms.v2 as v2
 from torch.utils.data import Subset
 import numpy as np
+import os
 
 class CachedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, desc="Ładowanie zbioru do RAM"):
@@ -70,12 +71,14 @@ def get_gpu_transforms(dataset_name, aug_type='none'):
 def get_dataset(dataset_name, train, aug_type='none'):
     
     transform = get_transforms(dataset_name)
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_dir = os.path.join(PROJECT_ROOT, 'data')
 
     if dataset_name == 'mnist':
-        ds = datasets.MNIST(root='./data', train=train, download=True, transform=transform)
+        ds = datasets.MNIST(root=data_dir, train=train, download=True, transform=transform)
     elif dataset_name == 'imagenette':
         split = 'train' if train else 'val'
-        ds = datasets.Imagenette(root='./data', split=split, download=True, transform=transform)
+        ds = datasets.Imagenette(root=data_dir, split=split, download=True, transform=transform)
     else:
         raise ValueError("Nieznany zbiór danych")
     
